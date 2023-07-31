@@ -306,8 +306,8 @@ def int_ranges(
 
 @overload
 def date_range(
-    start: date | datetime | IntoExpr,
-    end: date | datetime | IntoExpr,
+    start: date | IntoExpr,
+    end: date | IntoExpr,
     interval: str | timedelta = ...,
     *,
     closed: ClosedInterval = ...,
@@ -321,8 +321,8 @@ def date_range(
 
 @overload
 def date_range(
-    start: date | datetime | IntoExpr,
-    end: date | datetime | IntoExpr,
+    start: date | IntoExpr,
+    end: date | IntoExpr,
     interval: str | timedelta = ...,
     *,
     closed: ClosedInterval = ...,
@@ -336,8 +336,8 @@ def date_range(
 
 @overload
 def date_range(
-    start: date | datetime | IntoExpr,
-    end: date | datetime | IntoExpr,
+    start: date | IntoExpr,
+    end: date | IntoExpr,
     interval: str | timedelta = ...,
     *,
     closed: ClosedInterval = ...,
@@ -352,8 +352,8 @@ def date_range(
 @deprecate_renamed_parameter("low", "start", version="0.18.0")
 @deprecate_renamed_parameter("high", "end", version="0.18.0")
 def date_range(
-    start: date | datetime | IntoExpr,
-    end: date | datetime | IntoExpr,
+    start: date | IntoExpr,
+    end: date | IntoExpr,
     interval: str | timedelta = "1d",
     *,
     closed: ClosedInterval = "both",
@@ -537,8 +537,8 @@ def date_range(
 
 @overload
 def date_ranges(
-    start: date | datetime | IntoExpr,
-    end: date | datetime | IntoExpr,
+    start: date | IntoExpr,
+    end: date | IntoExpr,
     interval: str | timedelta = ...,
     *,
     closed: ClosedInterval = ...,
@@ -551,8 +551,8 @@ def date_ranges(
 
 @overload
 def date_ranges(
-    start: date | datetime | IntoExpr,
-    end: date | datetime | IntoExpr,
+    start: date | IntoExpr,
+    end: date | IntoExpr,
     interval: str | timedelta = ...,
     *,
     closed: ClosedInterval = ...,
@@ -565,8 +565,8 @@ def date_ranges(
 
 @overload
 def date_ranges(
-    start: date | datetime | IntoExpr,
-    end: date | datetime | IntoExpr,
+    start: date | IntoExpr,
+    end: date | IntoExpr,
     interval: str | timedelta = ...,
     *,
     closed: ClosedInterval = ...,
@@ -578,8 +578,8 @@ def date_ranges(
 
 
 def date_ranges(
-    start: date | datetime | IntoExpr,
-    end: date | datetime | IntoExpr,
+    start: date | IntoExpr,
+    end: date | IntoExpr,
     interval: str | timedelta = "1d",
     *,
     closed: ClosedInterval = "both",
@@ -653,6 +653,209 @@ def date_ranges(
 
     result = wrap_expr(
         plr.date_ranges(
+            start_pyexpr, end_pyexpr, interval, closed, time_unit, time_zone
+        )
+    )
+
+    if eager:
+        return F.select(result).to_series()
+
+    return result
+
+
+@overload
+def datetime_range(
+    start: datetime | IntoExpr,
+    end: datetime | IntoExpr,
+    interval: str | timedelta = ...,
+    *,
+    closed: ClosedInterval = ...,
+    time_unit: TimeUnit | None = ...,
+    time_zone: str | None = ...,
+    eager: Literal[False] = ...,
+) -> Expr:
+    ...
+
+
+@overload
+def datetime_range(
+    start: datetime | IntoExpr,
+    end: datetime | IntoExpr,
+    interval: str | timedelta = ...,
+    *,
+    closed: ClosedInterval = ...,
+    time_unit: TimeUnit | None = ...,
+    time_zone: str | None = ...,
+    eager: Literal[True],
+) -> Series:
+    ...
+
+
+@overload
+def datetime_range(
+    start: datetime | IntoExpr,
+    end: datetime | IntoExpr,
+    interval: str | timedelta = ...,
+    *,
+    closed: ClosedInterval = ...,
+    time_unit: TimeUnit | None = ...,
+    time_zone: str | None = ...,
+    eager: bool,
+) -> Series | Expr:
+    ...
+
+
+def datetime_range(
+    start: datetime | IntoExpr,
+    end: datetime | IntoExpr,
+    interval: str | timedelta = "1d",
+    *,
+    closed: ClosedInterval = "both",
+    time_unit: TimeUnit | None = None,
+    time_zone: str | None = None,
+    eager: bool = False,
+) -> Series | Expr:
+    """
+    Generate a datetime range.
+
+    Parameters
+    ----------
+    start
+        Lower bound of the datetime range.
+    end
+        Upper bound of the datetime range.
+    interval
+        Interval of the range periods, specified as a Python ``timedelta`` object
+        or a Polars duration string like ``1h30m25s``.
+
+        Append ``_saturating`` to the interval string to restrict resulting invalid
+        dates to valid ranges.
+    closed : {'both', 'left', 'right', 'none'}
+        Define which sides of the range are closed (inclusive).
+    time_unit : {None, 'ns', 'us', 'ms'}
+        Time unit of the resulting ``Datetime`` data type.
+    time_zone
+        Time zone of the resulting ``Datetime`` data type.
+    eager
+        Evaluate immediately and return a ``Series``.
+        If set to ``False`` (default), return an expression instead.
+
+    Returns
+    -------
+    Expr or Series
+        Column of data type :class:`Datetime`.
+
+    """
+    interval = _parse_interval_argument(interval)
+    if time_unit is None and "ns" in interval:
+        time_unit = "ns"
+
+    start_pyexpr = parse_as_expression(start)
+    end_pyexpr = parse_as_expression(end)
+    result = wrap_expr(
+        plr.datetime_range(
+            start_pyexpr, end_pyexpr, interval, closed, time_unit, time_zone
+        )
+    )
+
+    if eager:
+        return F.select(result).to_series()
+
+    return result
+
+
+@overload
+def datetime_ranges(
+    start: datetime | IntoExpr,
+    end: datetime | IntoExpr,
+    interval: str | timedelta = ...,
+    *,
+    closed: ClosedInterval = ...,
+    time_unit: TimeUnit | None = ...,
+    time_zone: str | None = ...,
+    eager: Literal[False] = ...,
+) -> Expr:
+    ...
+
+
+@overload
+def datetime_ranges(
+    start: datetime | IntoExpr,
+    end: datetime | IntoExpr,
+    interval: str | timedelta = ...,
+    *,
+    closed: ClosedInterval = ...,
+    time_unit: TimeUnit | None = ...,
+    time_zone: str | None = ...,
+    eager: Literal[True],
+) -> Series:
+    ...
+
+
+@overload
+def datetime_ranges(
+    start: datetime | IntoExpr,
+    end: datetime | IntoExpr,
+    interval: str | timedelta = ...,
+    *,
+    closed: ClosedInterval = ...,
+    time_unit: TimeUnit | None = ...,
+    time_zone: str | None = ...,
+    eager: bool,
+) -> Series | Expr:
+    ...
+
+
+def datetime_ranges(
+    start: datetime | IntoExpr,
+    end: datetime | IntoExpr,
+    interval: str | timedelta = "1d",
+    *,
+    closed: ClosedInterval = "both",
+    time_unit: TimeUnit | None = None,
+    time_zone: str | None = None,
+    eager: bool = False,
+) -> Series | Expr:
+    """
+    Create a column of datetime ranges.
+
+    Parameters
+    ----------
+    start
+        Lower bound of the datetime range.
+    end
+        Upper bound of the datetime range.
+    interval
+        Interval of the range periods, specified as a Python ``timedelta`` object
+        or a Polars duration string like ``1h30m25s``.
+
+        Append ``_saturating`` to the interval string to restrict resulting invalid
+        dates to valid ranges.
+    closed : {'both', 'left', 'right', 'none'}
+        Define which sides of the range are closed (inclusive).
+    time_unit : {None, 'ns', 'us', 'ms'}
+        Time unit of the resulting ``Datetime`` data type.
+    time_zone
+        Time zone of the resulting ``Datetime`` data type.
+    eager
+        Evaluate immediately and return a ``Series``.
+        If set to ``False`` (default), return an expression instead.
+
+    Returns
+    -------
+    Expr or Series
+        Column of data type ``List(Datetime)``.
+
+    """
+    interval = _parse_interval_argument(interval)
+    if time_unit is None and "ns" in interval:
+        time_unit = "ns"
+
+    start_pyexpr = parse_as_expression(start)
+    end_pyexpr = parse_as_expression(end)
+
+    result = wrap_expr(
+        plr.datetime_ranges(
             start_pyexpr, end_pyexpr, interval, closed, time_unit, time_zone
         )
     )
