@@ -84,6 +84,12 @@ def _duration_to_dtype(dtype: Duration) -> Dtype:
     return DtypeKind.DATETIME, 64, arrow_c_type, NE
 
 
+def dtype_to_polars_physical_dtype(dtype: Dtype) -> DataTypeClass:
+    """Convert interchange protocol data type to a physical Polars data type."""
+    # TODO: Implement
+    return dtype_to_polars_dtype(dtype)
+
+
 def dtype_to_polars_dtype(dtype: Dtype) -> PolarsDataType:
     """Convert interchange protocol data type to Polars data type."""
     kind, bit_width, format_str, _ = dtype
