@@ -87,7 +87,7 @@ def _duration_to_dtype(dtype: Duration) -> Dtype:
 def dtype_to_polars_physical_dtype(dtype: Dtype) -> DataTypeClass:
     """Convert interchange protocol data type to a physical Polars data type."""
     # TODO: Implement
-    return dtype_to_polars_dtype(dtype)
+    return dtype_to_polars_dtype(dtype)  # type: ignore[return-value]
 
 
 def dtype_to_polars_dtype(dtype: Dtype) -> PolarsDataType:
@@ -109,14 +109,17 @@ def _temporal_dtype_to_polars_dtype(format_str: str) -> PolarsDataType:
     if (match := re.fullmatch(r"ts([mun]):(.*)", format_str)) is not None:
         time_unit = match.group(1)
         time_zone = match.group(2) or None
-        return Datetime(time_unit=time_unit, time_zone=time_zone)
+        return Datetime(
+            time_unit=time_unit,  # type: ignore[arg-type]
+            time_zone=time_zone,
+        )
     elif format_str == "tdD":
         return Date
     elif format_str == "ttu":
         return Time
     elif (match := re.fullmatch(r"tD([mun])", format_str)) is not None:
         time_unit = match.group(1)
-        return Duration(time_unit)
+        return Duration(time_unit=time_unit)  # type: ignore[arg-type]
 
     raise NotImplementedError(f"unsupported temporal data type: {format_str!r}")
 

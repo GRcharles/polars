@@ -1,18 +1,21 @@
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING, Any
 
 import polars._reexport as pl
 import polars.functions as F
-from polars.datatypes import Int64
+from polars.datatypes import Boolean, Int8, Int64
 from polars.interchange.dataframe import PolarsDataFrame
-from polars.interchange.protocol import ColumnNullType, DtypeKind
+from polars.interchange.protocol import ColumnNullType
 from polars.interchange.utils import (
     dtype_to_polars_dtype,
     dtype_to_polars_physical_dtype,
 )
-from polars.polars import PySeries
 from polars.utils._wrap import wrap_s
+
+with contextlib.suppress(ImportError):  # Module not available when building docs
+    from polars.polars import PySeries
 
 if TYPE_CHECKING:
     from polars import DataFrame, Series
@@ -95,183 +98,49 @@ def _column_to_series(column: Column, *, allow_copy: bool = True) -> Series:
     polars_dtype = dtype_to_polars_dtype(column.dtype)
 
     buffers = column.get_buffers()
+    length = column.size()
+    offset = column.offset
 
-    data_buffer = _construct_data_buffer(*buffers["data"])
+    data_buffer = _construct_data_buffer(*buffers["data"], length, offset)
+    offsets_buffer = _construct_offsets_buffer(
+        buffers["offsets"], offset, allow_copy=allow_copy
+    )
+
+    data = wrap_s(
+        PySeries.from_buffers(polars_dtype, data_buffer, None, offsets_buffer)
+    )
+
     validity_buffer = _construct_validity_buffer(
-        column.describe_null,
+        column,
         buffers["validity"],
-        data_buffer,
-        column.size(),
-        column.offset,
+        data,
+        length,
+        offset,
         allow_copy=allow_copy,
     )
-    offsets_buffer = _construct_offsets_buffer(buffers["offsets"])
 
-    pyseries = wrap_s(
+    s = wrap_s(
         PySeries.from_buffers(
             polars_dtype, data_buffer, validity_buffer, offsets_buffer
         )
     )
-    return pyseries
-
-
-def _construct_data_buffer(buffer_info: tuple[Buffer, Dtype]) -> Series:
-    buffer, dtype = buffer_info
-    polars_physical_dtype = dtype_to_polars_physical_dtype(dtype)
-
-    s = wrap_s(PySeries.from_buffer(buffer.ptr, buffer.bufsize, polars_physical_dtype))
-    s.__buffer = buffer  # Keep memory alive
+    # Keep buffers alive
+    setattr(s, "__INTERCHANGE_BUFFERS", buffers)
 
     return s
 
 
-def _construct_validity_buffer(
-    describe_null: tuple[ColumnNullType, Any],
-    validity_buffer_info: tuple[Buffer, Dtype] | None,
-    data_buffer: Series,
-    length: int,
-    offset: int,
-    *,
-    allow_copy: bool = True,
-) -> Series | None:
-    null_type, value = describe_null
-    if null_type == ColumnNullType.NON_NULLABLE:
-        return None
-    elif null_type in (ColumnNullType.USE_BITMASK, ColumnNullType.USE_BYTEMASK):
-        if validity_buffer_info is None:
-            return None
-
-        buffer, dtype = validity_buffer_info
-        if null_type == ColumnNullType.USE_BITMASK:
-            return _construct_validity_buffer_from_bitmask(
-                buffer, dtype, value, length, offset, allow_copy=allow_copy
-            )
-        else:
-            return _construct_validity_buffer_from_bytemask(
-                buffer, dtype, value, length, offset, allow_copy=allow_copy
-            )
-    elif null_type in (ColumnNullType.USE_NAN, ColumnNullType.USE_SENTINEL):
-        if not allow_copy:
-            raise RuntimeError("bitmask must be constructed, which is not zero-copy")
-
-        if null_type == ColumnNullType.USE_NAN:
-            return data_buffer.is_not_nan()
-        else:
-            return data_buffer != value
-    else:
-        raise NotImplementedError(f"unsupported null type: {null_type!r}")
-
-
-def _construct_validity_buffer_from_bitmask(
-    buffer_info: tuple[Buffer, Dtype] | None,
-    value: int,
-    length: int,
-    offset: int = 0,
-    *,
-    allow_copy: bool = True,
+def _construct_data_buffer(
+    buffer: Buffer, dtype: Dtype, length: int, offset: int
 ) -> Series:
-    null_kind, sentinel_val = describe_null
-    validity_kind, _, _, _ = validity_dtype
-    assert validity_kind == DtypeKind.BOOL
-
-
-    elif null_kind == ColumnNullType.USE_BYTEMASK or (
-        null_kind == ColumnNullType.USE_BITMASK and sentinel_val == 1
-    ):
-        buff = pa.foreign_buffer(
-            validity_buff.ptr, validity_buff.bufsize, base=validity_buff
-        )
-
-        if null_kind == ColumnNullType.USE_BYTEMASK:
-            if not allow_copy:
-                raise RuntimeError(
-                    "To create a bitmask a copy of the data is "
-                    "required which is forbidden by allow_copy=False"
-                )
-            mask = pa.Array.from_buffers(pa.int8(), length, [None, buff], offset=offset)
-            mask_bool = pc.cast(mask, pa.bool_())
-        else:
-            mask_bool = pa.Array.from_buffers(
-                pa.bool_(), length, [None, buff], offset=offset
-            )
-
-        if sentinel_val == 1:
-            mask_bool = pc.invert(mask_bool)
-
-        return mask_bool.buffers()[1]
-
-    elif null_kind == ColumnNullType.USE_BITMASK and sentinel_val == 0:
-        return pa.foreign_buffer(
-            validity_buff.ptr, validity_buff.bufsize, base=validity_buff
-        )
-    else:
-        raise NotImplementedError(
-            f"{describe_null} null representation is not yet supported."
-        )
-
-
-def _construct_validity_buffer_from_bytemask(
-    validity_buff: Any,
-    validity_dtype: Dtype,
-    describe_null: ColumnNullType,
-    length: int,
-    offset: int = 0,
-    allow_copy: bool = True,
-) -> Series:
-    null_kind, sentinel_val = describe_null
-    validity_kind, _, _, _ = validity_dtype
-    assert validity_kind == DtypeKind.BOOL
-
-
-    elif null_kind == ColumnNullType.USE_BYTEMASK or (
-        null_kind == ColumnNullType.USE_BITMASK and sentinel_val == 1
-    ):
-        buff = pa.foreign_buffer(
-            validity_buff.ptr, validity_buff.bufsize, base=validity_buff
-        )
-
-        if null_kind == ColumnNullType.USE_BYTEMASK:
-            if not allow_copy:
-                raise RuntimeError(
-                    "To create a bitmask a copy of the data is "
-                    "required which is forbidden by allow_copy=False"
-                )
-            mask = pa.Array.from_buffers(pa.int8(), length, [None, buff], offset=offset)
-            mask_bool = pc.cast(mask, pa.bool_())
-        else:
-            mask_bool = pa.Array.from_buffers(
-                pa.bool_(), length, [None, buff], offset=offset
-            )
-
-        if sentinel_val == 1:
-            mask_bool = pc.invert(mask_bool)
-
-        return mask_bool.buffers()[1]
-
-    elif null_kind == ColumnNullType.USE_BITMASK and sentinel_val == 0:
-        return pa.foreign_buffer(
-            validity_buff.ptr, validity_buff.bufsize, base=validity_buff
-        )
-    else:
-        raise NotImplementedError(
-            f"{describe_null} null representation is not yet supported."
-        )
-
-
-def _construct_validity_buffer_from_nan(
-    data_buffer: Series, sentinel_value: Any
-) -> Series:
-    return data_buffer.is_not_nan()
-
-
-def _construct_validity_buffer_from_sentinel(
-    data_buffer: Series, sentinel_value: Any
-) -> Series:
-    return data_buffer != sentinel_value
+    polars_physical_dtype = dtype_to_polars_physical_dtype(dtype)
+    return wrap_s(
+        PySeries.from_buffer(polars_physical_dtype, buffer.ptr, length, offset)
+    )
 
 
 def _construct_offsets_buffer(
-    buffer_info: tuple[Buffer, Dtype] | None, *, allow_copy: bool = True
+    buffer_info: tuple[Buffer, Dtype] | None, offset: int, *, allow_copy: bool = True
 ) -> Series | None:
     if buffer_info is None:
         return None
@@ -279,13 +148,97 @@ def _construct_offsets_buffer(
     buffer, dtype = buffer_info
     polars_physical_dtype = dtype_to_polars_physical_dtype(dtype)
 
-    s = wrap_s(PySeries.from_buffer(buffer.ptr, buffer.bufsize, polars_physical_dtype))
-    s.__buffer = buffer  # Keep memory alive
+    s = wrap_s(
+        PySeries.from_buffer(polars_physical_dtype, buffer.ptr, buffer.bufsize, offset)
+    )
 
-    # Polars only supports 'large' types, which have Int64 offsets
+    # Polars only supports Int64 offsets
     if polars_physical_dtype != Int64:
         if not allow_copy:
-            raise RuntimeError()
+            raise RuntimeError(
+                "copy required"
+                f"\n\nOffset buffer must be cast from {polars_physical_dtype} to Int64."
+            )
         s = s.cast(Int64)
+
+    return s
+
+
+def _construct_validity_buffer(
+    column: Column,
+    validity_buffer_info: tuple[Buffer, Dtype] | None,
+    data_buffer: Series,
+    length: int,
+    offset: int,
+    *,
+    allow_copy: bool = True,
+) -> Series | None:
+    null_type, value = column.describe_null
+    if null_type == ColumnNullType.NON_NULLABLE or column.null_count == 0:
+        return None
+
+    elif null_type in (ColumnNullType.USE_BITMASK, ColumnNullType.USE_BYTEMASK):
+        if validity_buffer_info is None:
+            return None
+
+        buffer = validity_buffer_info[0]
+        if null_type == ColumnNullType.USE_BITMASK:
+            return _construct_validity_buffer_from_bitmask(
+                buffer, value, length, offset, allow_copy=allow_copy
+            )
+        else:
+            return _construct_validity_buffer_from_bytemask(
+                buffer, value, length, offset, allow_copy=allow_copy
+            )
+
+    elif null_type in (ColumnNullType.USE_NAN, ColumnNullType.USE_SENTINEL):
+        if not allow_copy:
+            raise RuntimeError("copy required\n\nBitmask must be constructed.")
+
+        if null_type == ColumnNullType.USE_NAN:
+            return data_buffer.is_not_nan()
+        else:
+            return data_buffer != value
+
+    else:
+        raise NotImplementedError(f"unsupported null type: {null_type!r}")
+
+
+def _construct_validity_buffer_from_bitmask(
+    buffer: Buffer,
+    value: int,
+    length: int,
+    offset: int,
+    *,
+    allow_copy: bool = True,
+) -> Series:
+    s = wrap_s(PySeries.from_buffer(Boolean, buffer.ptr, length, offset))
+
+    if value != 0:
+        if not allow_copy:
+            raise RuntimeError("copy required\n\nBitmask must be inverted.")
+        s = ~s
+
+    return s
+
+
+def _construct_validity_buffer_from_bytemask(
+    buffer: Buffer,
+    value: int,
+    length: int,
+    offset: int,
+    *,
+    allow_copy: bool = True,
+) -> Series:
+    if not allow_copy:
+        raise RuntimeError(
+            "copy required\n\nBytemask must be converted into a bitmask."
+        )
+
+    s = wrap_s(PySeries.from_buffer(Int8, buffer.ptr, length, offset))
+    s = s.cast(Boolean)
+
+    if value != 0:
+        s = ~s
 
     return s
