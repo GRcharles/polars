@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from polars.datatypes import (
@@ -28,6 +29,25 @@ if TYPE_CHECKING:
     from polars.interchange.protocol import Dtype
     from polars.type_aliases import PolarsDataType
 
+
+def polars_dtype_to_dtype(dtype: PolarsDataType) -> Dtype:
+    """Convert Polars data type to interchange protocol data type."""
+    try:
+        result = dtype_map[dtype.base_type()]
+    except KeyError as exc:
+        raise ValueError(
+            f"data type {dtype!r} not supported by the interchange protocol"
+        ) from exc
+
+    # Handle instantiated data types
+    if isinstance(dtype, Datetime):
+        return _datetime_to_dtype(dtype)
+    elif isinstance(dtype, Duration):
+        return _duration_to_dtype(dtype)
+
+    return result
+
+
 NE = Endianness.NATIVE
 
 dtype_map: dict[DataTypeClass, Dtype] = {
@@ -51,24 +71,6 @@ dtype_map: dict[DataTypeClass, Dtype] = {
 }
 
 
-def polars_dtype_to_dtype(dtype: PolarsDataType) -> Dtype:
-    """Convert Polars data type to interchange protocol data type."""
-    try:
-        result = dtype_map[dtype.base_type()]
-    except KeyError as exc:
-        raise ValueError(
-            f"data type {dtype!r} not supported by the interchange protocol"
-        ) from exc
-
-    # Handle instantiated data types
-    if isinstance(dtype, Datetime):
-        return _datetime_to_dtype(dtype)
-    elif isinstance(dtype, Duration):
-        return _duration_to_dtype(dtype)
-
-    return result
-
-
 def _datetime_to_dtype(dtype: Datetime) -> Dtype:
     tu = dtype.time_unit[0] if dtype.time_unit is not None else "u"
     tz = dtype.time_zone if dtype.time_zone is not None else ""
@@ -80,3 +82,56 @@ def _duration_to_dtype(dtype: Duration) -> Dtype:
     tu = dtype.time_unit[0] if dtype.time_unit is not None else "u"
     arrow_c_type = f"tD{tu}"
     return DtypeKind.DATETIME, 64, arrow_c_type, NE
+
+
+def dtype_to_polars_dtype(dtype: Dtype) -> PolarsDataType:
+    """Convert interchange protocol data type to Polars data type."""
+    kind, bit_width, format_str, _ = dtype
+
+    if kind == DtypeKind.DATETIME:
+        return _temporal_dtype_to_polars_dtype(format_str)
+    elif kind == DtypeKind.CATEGORICAL:
+        return Categorical
+
+    try:
+        return polars_dtype_map[kind][bit_width]
+    except KeyError as exc:
+        raise NotImplementedError(f"unsupported data type: {format_str!r}") from exc
+
+
+def _temporal_dtype_to_polars_dtype(format_str: str) -> PolarsDataType:
+    if (match := re.fullmatch(r"ts([mun]):(.*)", format_str)) is not None:
+        time_unit = match.group(1)
+        time_zone = match.group(2) or None
+        return Datetime(time_unit=time_unit, time_zone=time_zone)
+    elif format_str == "tdD":
+        return Date
+    elif format_str == "ttu":
+        return Time
+    elif (match := re.fullmatch(r"tD([mun])", format_str)) is not None:
+        time_unit = match.group(1)
+        return Duration(time_unit)
+
+    raise NotImplementedError(f"unsupported temporal data type: {format_str!r}")
+
+
+polars_dtype_map: dict[DtypeKind, dict[int, DataTypeClass]] = {
+    DtypeKind.INT: {
+        8: Int8,
+        16: Int16,
+        32: Int32,
+        64: Int64,
+    },
+    DtypeKind.UINT: {
+        8: UInt8,
+        16: UInt16,
+        32: UInt32,
+        64: UInt64,
+    },
+    DtypeKind.FLOAT: {
+        32: Float32,
+        64: Float64,
+    },
+    DtypeKind.BOOL: {1: Boolean},
+    DtypeKind.STRING: {8: Utf8},
+}
