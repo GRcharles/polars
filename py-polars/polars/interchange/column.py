@@ -159,6 +159,12 @@ class PolarsColumn(Column):
         dtype = self.dtype
         if dtype[0] == DtypeKind.CATEGORICAL:
             dtype = (DtypeKind.UINT, 32, "I", Endianness.NATIVE)
+        elif dtype[0] == DtypeKind.STRING:
+            dtype = (DtypeKind.UINT, 8, "C", Endianness.NATIVE)
+        elif dtype[0] == DtypeKind.DATETIME:
+            bit_width = dtype[1]
+            format_string = "l" if bit_width == 64 else "i"
+            dtype = (DtypeKind.INT, bit_width, format_string, Endianness.NATIVE)
 
         return buffer, dtype
 

@@ -103,13 +103,13 @@ def test_from_dataframe_pyarrow_min_version(monkeypatch: Any) -> None:
 
 
 @pytest.mark.parametrize("dtype", [pl.Date, pl.Time, pl.Duration])
-def test_from_dataframe_data_type_not_implemented_by_arrow(
+def test_from_dataframe_temporal_data_types(
     dtype: pl.PolarsDataType,
 ) -> None:
-    df = pl.Series(dtype=dtype).to_frame()
+    df = pl.Series("a", dtype=dtype).to_frame()
     dfi = df.__dataframe__()
-    with pytest.raises(NotImplementedError, match="not supported"):
-        pl.from_dataframe(dfi)
+    result = pl.from_dataframe(dfi)
+    assert_frame_equal(result, df)
 
 
 # Remove xfail marker when the issue is fixed:

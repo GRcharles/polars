@@ -184,7 +184,7 @@ def test_get_buffers_with_validity_and_offsets() -> None:
     data_buffer, data_dtype = out["data"]
     expected = pl.Series([97, 98, 99, 195, 169, 195, 162, 195, 167], dtype=pl.UInt8)
     assert_series_equal(data_buffer._data, expected)
-    assert data_dtype == (DtypeKind.STRING, 8, "U", "=")
+    assert data_dtype == (DtypeKind.UINT, 8, "C", "=")
 
     validity = out["validity"]
     assert validity is not None
