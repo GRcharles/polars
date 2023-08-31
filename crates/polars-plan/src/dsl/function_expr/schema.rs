@@ -90,7 +90,39 @@ impl FunctionExpr {
                             DataType::List(Box::new(inner_dtype)),
                         ));
                     },
-
+                    DatetimeRange {
+                        every,
+                        closed: _,
+                        time_unit,
+                        time_zone,
+                    } => {
+                        // TODO: Properly implement this specifically for datetime
+                        // output dtype may change based on `time_unit` and `time_zone`
+                        let dtype = mapper.map_to_date_range_dtype(
+                            every,
+                            time_unit.as_ref(),
+                            time_zone.as_deref(),
+                        )?;
+                        return Ok(Field::new("datetime", dtype));
+                    },
+                    DatetimeRanges {
+                        every,
+                        closed: _,
+                        time_unit,
+                        time_zone,
+                    } => {
+                        // TODO: Properly implement this specifically for datetime
+                        // output dtype may change based on `time_unit` and `time_zone`
+                        let inner_dtype = mapper.map_to_date_range_dtype(
+                            every,
+                            time_unit.as_ref(),
+                            time_zone.as_deref(),
+                        )?;
+                        return Ok(Field::new(
+                            "datetime_range",
+                            DataType::List(Box::new(inner_dtype)),
+                        ));
+                    },
                     TimeRange { .. } => {
                         return Ok(Field::new("time", DataType::Time));
                     },
