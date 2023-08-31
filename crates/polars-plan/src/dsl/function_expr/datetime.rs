@@ -55,6 +55,18 @@ pub enum TemporalFunction {
         time_unit: Option<TimeUnit>,
         time_zone: Option<TimeZone>,
     },
+    DatetimeRange {
+        every: Duration,
+        closed: ClosedWindow,
+        time_unit: Option<TimeUnit>,
+        time_zone: Option<TimeZone>,
+    },
+    DatetimeRanges {
+        every: Duration,
+        closed: ClosedWindow,
+        time_unit: Option<TimeUnit>,
+        time_zone: Option<TimeZone>,
+    },
     TimeRange {
         every: Duration,
         closed: ClosedWindow,
@@ -107,6 +119,8 @@ impl Display for TemporalFunction {
             ReplaceTimeZone(_) => "replace_time_zone",
             DateRange { .. } => return write!(f, "date_range"),
             DateRanges { .. } => return write!(f, "date_ranges"),
+            DatetimeRange { .. } => return write!(f, "datetime_range"),
+            DatetimeRanges { .. } => return write!(f, "datetime_ranges"),
             TimeRange { .. } => return write!(f, "time_range"),
             TimeRanges { .. } => return write!(f, "time_ranges"),
             DatetimeFunction { .. } => return write!(f, "datetime"),
